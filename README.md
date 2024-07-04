@@ -17,3 +17,5 @@
     TELEGRAM_API_ID=
     TELEGRAM_API_HASH=
 Получить ID и HASH от телеграм можно здесь - https://my.telegram.org/auth
+### node-red
+![node-red](https://i.imgur.com/ijcqr76.png)
