@@ -7,15 +7,34 @@ const WebSocket          = require('ws');
 
 const api = new API();
 
-const missileAlarmTTS  = '' +
-    'Ракетная опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
-    'Ракетная опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
-    'Ракетная опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">';
+const alarmDangers = {
+    'unknown': {
+        alarm: 'Неизвестная',
+        retreat: 'неизвестной',
+    },
+    'rocket': {
+        alarm: 'Ракетная',
+        retreat: 'ракетной',
+    },
+    'aviation': {
+        alarm: 'Авиационная',
+        retreat: 'авиационной',
+    },
+    'drone': {
+        alarm: 'Беспилотная',
+        retreat: 'беспилотной',
+    },
+};
+
+const alarmTTS  = '' +
+    '%danger_type% опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
+    '%danger_type% опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
+    '%danger_type% опасность<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">';
 
 const alarmRetreatTTS  = '' +
-    'Отбой ракетной опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
-    'Отбой ракетной опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
-    'Отбой ракетной опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">';
+    'Отбой %danger_type_retreat% опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
+    'Отбой %danger_type_retreat% опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">sil<[1500]>' +
+    'Отбой %danger_type_retreat% опасности<speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus"><speaker audio="alice-sounds-game-ping-1.opus">';
 
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -121,33 +140,51 @@ async function handleMessages(ws) {
             continue;
         }
 
-        let missileAlarm   = false;
-        let alarmRetreat   = false;
+        let type      = 'unknown'; // rocket, aviation, drone (unknown в случае если не спарсили)
+        let alarm     = true;
+        let retreat   = false;
 
         for (let message of messages) {
 
             let messageFromChannel = message.message.toLowerCase();
 
             if (messageFromChannel.includes('опасность') || messageFromChannel.includes('в укрытие')) {
-                missileAlarm = true;
-                console.log('   !!! missileAlarm');
+                alarm = true;
             }
 
             if (messageFromChannel.includes('отбой')) {
-                alarmRetreat = true;
-                console.log('   !!! alarmRetreat');
+                retreat = true;
+            }
+
+            /////////////// опасности
+
+            if (messageFromChannel.includes('ракетная') || messageFromChannel.includes('ракетной')) {
+                type = 'rocket'
+            }
+
+            if (messageFromChannel.includes('авиационная') || messageFromChannel.includes('авиационной')) {
+                type = 'aviation'
+            }
+
+            if (messageFromChannel.includes('беспилотная') || messageFromChannel.includes('беспилотной')) {
+                type = 'drone'
             }
 
         }
 
         currentId = messages[0].id;
 
-        if (missileAlarm || alarmRetreat) {
+        if (alarm || retreat) {
 
-            let tts;
+            let textToSpeech;
 
-            tts = missileAlarm ? missileAlarmTTS : tts
-            tts = alarmRetreat ? alarmRetreatTTS : tts
+            if (alarm) {
+                textToSpeech = alarmTTS.replaceAll('%danger_type%', alarmDangers[type].alarm);
+            }
+
+            if (retreat) {
+                textToSpeech = alarmRetreatTTS.replaceAll('%danger_type_retreat%', alarmDangers[type].retreat);
+            }
 
             for (let i = 0; i < 3; i++) {
 
@@ -157,9 +194,9 @@ async function handleMessages(ws) {
                     continue;
                 }
 
-                ws.send(tts);
+                ws.send(textToSpeech);
 
-                console.log('       - Отправил: ' + tts)
+                console.log('       - Отправил: ' + textToSpeech)
 
                 break;
 
