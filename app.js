@@ -119,6 +119,17 @@ async function handleMessages(ws) {
     console.log('');
     console.log('Жду новые сообщения');
 
+    // Храним время последней тревоги для каждого типа опасности, для того чтобы не заваливать алису однотипными сообщениями
+
+    let lastAlarmTime = {
+        'rocket':   0,
+        'aviation': 0,
+        'drone':    0,
+        'unknown':  0,
+    };
+
+    const alarmInterval = 3 * 60 * 1000; // Интервал в миллисекундах (3 минуты)
+
     while (true) {
 
         // восстановление разорванного сокет соединения
@@ -158,50 +169,53 @@ async function handleMessages(ws) {
 
             /////////////// опасности
 
-            if (messageFromChannel.includes('ракетная') || messageFromChannel.includes('ракетной')) {
-                type = 'rocket'
-            }
-
-            if (messageFromChannel.includes('авиационная') || messageFromChannel.includes('авиационной')) {
-                type = 'aviation'
-            }
-
-            if (messageFromChannel.includes('беспилотная') || messageFromChannel.includes('беспилотной')) {
-                type = 'drone'
-            }
+            type = messageFromChannel.includes('ракетная') || messageFromChannel.includes('ракетной')           ? 'rocket'      : type
+            type = messageFromChannel.includes('авиационная') || messageFromChannel.includes('авиационной')     ? 'aviation'    : type
+            type = messageFromChannel.includes('беспилотная') || messageFromChannel.includes('беспилотной')     ? 'done'        : type
 
         }
 
         currentId = messages[0].id;
 
-        if (alarm || retreat) {
-
-            let textToSpeech;
-
-            if (alarm) {
-                textToSpeech = alarmTTS.replaceAll('%danger_type%', alarmDangers[type].alarm);
-            }
-
-            if (retreat) {
-                textToSpeech = alarmRetreatTTS.replaceAll('%danger_type_retreat%', alarmDangers[type].retreat);
-            }
-
-            for (let i = 0; i < 3; i++) {
-
-                if (ws.readyState !== WebSocket.OPEN) {
-                    console.log('[ DEBUG ]  Разорвано соединение во время отправки, пробую... (попытка ' + i + ')');
-                    await sleep(2000);
-                    continue;
-                }
-
-                ws.send(textToSpeech);
-
-                console.log('       - Отправил: ' + textToSpeech)
-
-                break;
-
-            }
+        if (!alarm && !retreat) {   // если нет тревоги и отмены то пропускаем
+            continue;
         }
+
+        let textToSpeech;
+
+        const currentTime = Date.now();
+
+        if (alarm) {
+            // Проверка, прошли ли 3 минуты с момента последней тревоги этого типа, чтобы алиса не повторяла постоянно одно и то же
+            if (currentTime - lastAlarmTime[type] < alarmInterval) {
+                console.log(`[ DEBUG ] Тревога типа ${type} была недавно, пропускаем`);
+                continue;
+            }
+
+            textToSpeech = alarmTTS.replaceAll('%danger_type%', alarmDangers[type].alarm);
+            lastAlarmTime[type] = currentTime;  // Обновляем время последней тревоги
+        }
+
+        if (retreat) {
+            textToSpeech = alarmRetreatTTS.replaceAll('%danger_type_retreat%', alarmDangers[type].retreat);
+        }
+
+        for (let i = 0; i < 3; i++) {
+
+            if (ws.readyState !== WebSocket.OPEN) {
+                console.log('[ DEBUG ]  Разорвано соединение во время отправки, пробую... (попытка ' + i + ')');
+                await sleep(2000);
+                continue;
+            }
+
+            ws.send(textToSpeech);
+
+            console.log('       - Отправил: ' + textToSpeech)
+
+            break;
+
+        }
+
 
     }
 }
